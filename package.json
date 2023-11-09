@@ -16,9 +16,9 @@
   "author": "Homero Raul Vargas Cruz <homero@innobox.systems>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/tu-usuario/innoboxrr-multipart-uploader/issues"
+    "url": "https://github.com/innoboxrr/innoboxrr-multipart-uploader/issues"
   },
-  "homepage": "https://github.com/tu-usuario/innoboxrr-multipart-uploader#readme",
+  "homepage": "https://github.com/innoboxrr/innoboxrr-multipart-uploader/tree/master#innoboxrr-multipart-uploader",
   "dependencies": {
     "axios": "^0.21.1"
   },
@@ -29,12 +29,7 @@
   "peerDependencies": {
     "vue": "^3.0.0"
   },
-  "scripts": {
-    "test": "jest",
-    "lint": "eslint .",
-    "build": "tu_comando_de_construccion",
-    "prepare": "npm run build"
-  },
+  "scripts": {},
   "engines": {
     "node": ">=12.x"
   },
