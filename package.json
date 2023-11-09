@@ -1,11 +1,48 @@
 {
-  "name": "multipart-uploader",
+  "name": "innoboxrr-multipart-uploader",
   "version": "1.0.0",
-  "description": "Módulo para subir un archivo en partes \"Resumable uploads\"",
+  "description": "Módulo para subir archivos en partes, permitiendo reanudar las subidas de forma eficiente.",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/innoboxrr/innoboxrr-multipart-uploader.git"
   },
-  "author": "",
-  "license": "ISC"
+  "keywords": [
+    "multipart",
+    "upload",
+    "resumable",
+    "file uploader"
+  ],
+  "author": "Homero Raul Vargas Cruz <homero@innobox.systems>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/tu-usuario/innoboxrr-multipart-uploader/issues"
+  },
+  "homepage": "https://github.com/tu-usuario/innoboxrr-multipart-uploader#readme",
+  "dependencies": {
+    "axios": "^0.21.1"
+  },
+  "devDependencies": {
+    "eslint": "^7.22.0",
+    "jest": "^26.6.3"
+  },
+  "peerDependencies": {
+    "vue": "^3.0.0"
+  },
+  "scripts": {
+    "test": "jest",
+    "lint": "eslint .",
+    "build": "tu_comando_de_construccion",
+    "prepare": "npm run build"
+  },
+  "engines": {
+    "node": ">=12.x"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }
