@@ -15,15 +15,45 @@
     // Aquí colocarías todo tu código del MultipartUploader
 
     class MultipartUploader {
+
         constructor(videoIdentifier) {
+
             this.isPaused = false;
+            
             this.currentPartNumber = 1;
+            
             this.maxRetries = 3;
+            
             this.chunkSize = 5 * 1024 * 1024; // 5MB
+            
             this.parts = [];
+            
             this.file = null;
+            
             this.uploadId = null;
+            
             this.videoIdentifier = videoIdentifier; // Identificador personalizado del video
+            
+            this.eventHandlers = {
+                'progress': [],
+                // otros eventos pueden ser agregados aquí
+            };
+
+        }
+
+        // Método para registrar manejadores de eventos
+        on(event, handler) {
+            if (this.eventHandlers[event]) {
+                this.eventHandlers[event].push(handler);
+            }
+            return this; // Permitir encadenamiento
+        }
+
+        // Método para emitir eventos
+        emit(event, data) {
+            if (this.eventHandlers[event]) {
+                this.eventHandlers[event].forEach(handler => handler(data));
+            }
         }
 
         // Inicia la carga del archivo
@@ -47,7 +77,9 @@
 
         // Carga las partes del archivo
         async uploadParts(totalParts) {
-            while (this.currentPartNumber <= totalParts && !this.isPaused) {
+            let uploadedSize = 0;
+
+            for (this.currentPartNumber; this.currentPartNumber <= totalParts && !this.isPaused; this.currentPartNumber++) {
                 let retries = 0;
                 let success = false;
 
@@ -55,15 +87,19 @@
                     try {
                         await this.uploadPart(this.currentPartNumber);
                         success = true;
+                        // Añadir el tamaño de la parte exitosamente cargada al tamaño total cargado
+                        uploadedSize += Math.min(this.chunkSize, this.file.size - uploadedSize);
+                        // Calcular el progreso total como un porcentaje
+                        const totalProgress = (uploadedSize / this.file.size) * 100;
+                        // Emitir el evento de progreso con el porcentaje total
+                        this.emit('progress', totalProgress);
                     } catch (error) {
                         retries++;
-                        if (retries === this.maxRetries) {
+                        if (retries >= this.maxRetries) {
                             throw new Error(`Failed uploading part ${this.currentPartNumber} after ${this.maxRetries} retries.`);
                         }
                     }
                 }
-
-                this.currentPartNumber++;
             }
 
             if (this.currentPartNumber > totalParts) {
@@ -122,6 +158,7 @@
                 parts: this.parts
             });
         }
+        
     }
 
     // Finalmente, retornarías tu constructor o librería
