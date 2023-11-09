@@ -16,7 +16,13 @@
 
     class MultipartUploader {
 
-        constructor(videoIdentifier) {
+        constructor(videoIdentifier, params = {}) {
+
+            this.initiateUploadRoute = params.initiateUploadRoute;
+
+            this.signPartUploadRoute = params.signPartUploadRoute;
+
+            this.completeUploadRoute = params.completeUploadRoute;
 
             this.isPaused = false;
             
@@ -66,7 +72,7 @@
             const totalParts = Math.ceil(this.file.size / this.chunkSize);
             
             // Iniciar la carga con una petición al servidor
-            const initiateResponse = await axios.post('{{ route('videoprocessor.initiate.upload') }}', {
+            const initiateResponse = await axios.post(this.initiateUploadRoute, {
                 _token: token.value,
                 video_identifier: this.videoIdentifier
             });
@@ -114,7 +120,7 @@
             const blob = this.file.slice(start, end);
 
             // Obtener la URL firmada del servidor
-            const signedResponse = await axios.post('{{ route('videoprocessor.sign.part.upload') }}', {
+            const signedResponse = await axios.post(this.signPartUploadRoute, {
                 _token: token.value,
                 video_identifier: this.videoIdentifier,
                 upload_id: this.uploadId,
@@ -151,14 +157,14 @@
 
         // Completar la carga
         async completeUpload() {
-            await axios.post('{{ route('videoprocessor.complete.upload') }}', {
+            await axios.post(this.completeUploadRoute, {
                 _token: token.value,
                 video_identifier: this.videoIdentifier,
                 upload_id: this.uploadId,
                 parts: this.parts
             });
         }
-        
+
     }
 
     // Finalmente, retornarías tu constructor o librería
