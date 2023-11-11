@@ -1,6 +1,6 @@
 {
   "name": "innoboxrr-multipart-uploader",
-  "version": "1.0.3",
+  "version": "1.0.11",
   "description": "Módulo para subir archivos en partes, permitiendo reanudar las subidas de forma eficiente.",
   "main": "index.js",
   "repository": {
@@ -20,7 +20,7 @@
   },
   "homepage": "https://github.com/innoboxrr/innoboxrr-multipart-uploader/tree/master#innoboxrr-multipart-uploader",
   "dependencies": {
-    "axios": "^0.21.1"
+    "axios": "^1.1.2"
   },
   "devDependencies": {
     "eslint": "^7.22.0",
@@ -29,7 +29,9 @@
   "peerDependencies": {
     "vue": "^3.0.0"
   },
-  "scripts": {},
+  "scripts": {
+    "build": "webpack --mode production"
+  },
   "engines": {
     "node": ">=12.x"
   },
