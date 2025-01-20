@@ -154,7 +154,7 @@
 
         // Completar la carga
         async completeUpload() {
-            await axios.post(this.completeUploadRoute, {
+            let res = await axios.post(this.completeUploadRoute, {
                 _token: this.token,
                 file_identifier: this.fileIdentifier,
                 filename: this.filename,
@@ -162,7 +162,10 @@
                 parts: this.parts,
             });
 
-            this.emit('complete', true);
+            this.emit('complete', {
+                status: true,
+                response: res
+            });
         }
     }
 
