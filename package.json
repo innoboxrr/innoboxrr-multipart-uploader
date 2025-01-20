@@ -1,6 +1,6 @@
 {
   "name": "innoboxrr-multipart-uploader",
-  "version": "1.0.11",
+  "version": "2.0.0",
   "description": "Módulo para subir archivos en partes, permitiendo reanudar las subidas de forma eficiente.",
   "main": "index.js",
   "repository": {
