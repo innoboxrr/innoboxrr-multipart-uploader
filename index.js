@@ -72,6 +72,7 @@
             const initiateResponse = await axios.post(this.initiateUploadRoute, {
                 _token: this.token,
                 file_identifier: this.fileIdentifier,
+                filename: this.filename,
             });
 
             this.uploadId = initiateResponse.data.upload_id;
@@ -156,6 +157,7 @@
             await axios.post(this.completeUploadRoute, {
                 _token: this.token,
                 file_identifier: this.fileIdentifier,
+                filename: this.filename,
                 upload_id: this.uploadId,
                 parts: this.parts,
             });
