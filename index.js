@@ -20,6 +20,7 @@
             this.file = null;
             this.uploadId = null;
             this.fileIdentifier = fileIdentifier; // Identificador único para el archivo
+            this.filename = params.filename || null;
             this.currentPartNumber = 1;
             this.isPaused = false;
             this.parts = [];
@@ -117,6 +118,7 @@
             const signedResponse = await axios.post(this.signPartUploadRoute, {
                 _token: this.token,
                 file_identifier: this.fileIdentifier,
+                filename: this.filename,
                 upload_id: this.uploadId,
                 part_number: partNumber,
             });
