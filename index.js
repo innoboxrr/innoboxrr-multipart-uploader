@@ -1,59 +1,48 @@
 (function (root, factory) {
-    
     if (typeof define === 'function' && define.amd) {
-    
-        // AMD. Register as an anonymous module.
-        define([], factory);
-    
+        define([], factory); // AMD
     } else if (typeof module === 'object' && module.exports) {
-    
-        // Node. Does not work with strict CommonJS, but
-        // only CommonJS-like environments that support module.exports,
-        // like Node.
-        module.exports = factory();
-    
+        module.exports = factory(); // CommonJS
     } else {
-    
-        // Browser globals (root is window)
-        root.MultipartUploader = factory();
-    
+        root.MultipartUploader = factory(); // Browser globals
     }
-
 }(typeof self !== 'undefined' ? self : this, function () {
 
     class MultipartUploader {
-
-        constructor(videoIdentifier, params = {}) {
-
+        constructor(fileIdentifier, params = {}) {
             this.token = params.token; // CSRF Token
-
             this.initiateUploadRoute = params.initiateUploadRoute;
-
             this.signPartUploadRoute = params.signPartUploadRoute;
-
             this.completeUploadRoute = params.completeUploadRoute;
-
-            this.isPaused = false;
-            
-            this.currentPartNumber = 1;
-            
-            this.maxRetries = 3;
-            
-            this.chunkSize = (params.chunkSize ?? 5) * 1024 * 1024; // 5MB
-            
-            this.parts = [];
-            
+            this.allowedFileTypes = params.allowedFileTypes || ['*']; // Tipos de archivo permitidos ('*' para cualquiera)
+            this.chunkSize = (params.chunkSize ?? 5) * 1024 * 1024; // Tamaño de chunk en MB (5 MB por defecto)
+            this.maxRetries = params.maxRetries ?? 3; // Reintentos por defecto
             this.file = null;
-            
             this.uploadId = null;
-            
-            this.videoIdentifier = videoIdentifier; // Identificador personalizado del video
-            
+            this.fileIdentifier = fileIdentifier; // Identificador único para el archivo
+            this.currentPartNumber = 1;
+            this.isPaused = false;
+            this.parts = [];
             this.eventHandlers = {
                 'progress': [],
                 'complete': [],
-                // otros eventos pueden ser agregados aquí
+                'error': [],
             };
+        }
+
+        // Validar el tipo de archivo
+        validateFileType(file) {
+            if (!file || !file.type) {
+                throw new Error('El archivo no tiene un tipo válido.');
+            }
+
+            if (this.allowedFileTypes.includes('*')) {
+                return true; // Aceptar cualquier archivo
+            }
+
+            if (!this.allowedFileTypes.includes(file.type)) {
+                throw new Error(`El tipo de archivo "${file.type}" no está permitido. Tipos permitidos: ${this.allowedFileTypes.join(', ')}`);
+            }
         }
 
         // Método para registrar manejadores de eventos
@@ -73,21 +62,17 @@
 
         // Inicia la carga del archivo
         async startUpload(file) {
-
-            // Por ahora solo admite videos en formato MP4
-            if (!file.type || file.type !== 'video/mp4') {
-                throw new Error('The file must be a MP4 video.');
-            }
-
+            this.validateFileType(file);
             this.file = file;
+
             const totalParts = Math.ceil(this.file.size / this.chunkSize);
-            
+
             // Iniciar la carga con una petición al servidor
             const initiateResponse = await axios.post(this.initiateUploadRoute, {
                 _token: this.token,
-                video_identifier: this.videoIdentifier
+                file_identifier: this.fileIdentifier,
             });
-            
+
             this.uploadId = initiateResponse.data.upload_id;
             await this.uploadParts(totalParts);
         }
@@ -104,15 +89,14 @@
                     try {
                         await this.uploadPart(this.currentPartNumber);
                         success = true;
-                        // Añadir el tamaño de la parte exitosamente cargada al tamaño total cargado
+
                         uploadedSize += Math.min(this.chunkSize, this.file.size - uploadedSize);
-                        // Calcular el progreso total como un porcentaje
                         const totalProgress = (uploadedSize / this.file.size) * 100;
-                        // Emitir el evento de progreso con el porcentaje total
                         this.emit('progress', totalProgress);
                     } catch (error) {
                         retries++;
                         if (retries >= this.maxRetries) {
+                            this.emit('error', `Failed uploading part ${this.currentPartNumber} after ${this.maxRetries} retries.`);
                             throw new Error(`Failed uploading part ${this.currentPartNumber} after ${this.maxRetries} retries.`);
                         }
                     }
@@ -130,22 +114,20 @@
             const end = partNumber * this.chunkSize;
             const blob = this.file.slice(start, end);
 
-            // Obtener la URL firmada del servidor
             const signedResponse = await axios.post(this.signPartUploadRoute, {
                 _token: this.token,
-                video_identifier: this.videoIdentifier,
+                file_identifier: this.fileIdentifier,
                 upload_id: this.uploadId,
-                part_number: partNumber
+                part_number: partNumber,
             });
 
             const url = signedResponse.data.url;
 
-            // Cargar la parte al servidor
             const uploadResponse = await axios.put(url, blob, {
                 headers: {
-                    'Content-Type': 'application/octet-stream'
+                    'Content-Type': 'application/octet-stream',
                 },
-                withCredentials: false
+                withCredentials: false,
             });
 
             if (uploadResponse.status !== 200) {
@@ -171,16 +153,14 @@
         async completeUpload() {
             await axios.post(this.completeUploadRoute, {
                 _token: this.token,
-                video_identifier: this.videoIdentifier,
+                file_identifier: this.fileIdentifier,
                 upload_id: this.uploadId,
-                parts: this.parts
+                parts: this.parts,
             });
 
             this.emit('complete', true);
         }
-
     }
 
-    // Finalmente, retornarías tu constructor o librería
     return MultipartUploader;
 }));
