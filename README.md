@@ -1,55 +1,119 @@
-# Innoboxrr Multipart Uploader
+# 📤 MultipartUploader
 
-Un módulo de JavaScript para subir archivos en múltiples partes, permitiendo la reanudación de las cargas y la gestión eficiente de archivos grandes.
+`MultipartUploader` es una clase JavaScript que permite subir archivos de gran tamaño en múltiples partes (multipart upload) utilizando rutas firmadas, ideal para integraciones con servicios como Amazon S3.
 
-## Instalación
+Compatible con AMD, CommonJS y uso directo en el navegador.
 
-Puedes instalar `innoboxrr-multipart-uploader` utilizando npm:
+---
 
-```bash
-npm install innoboxrr-multipart-uploader
+## 🚀 Instalación
+
+Puedes incluirla directamente en tu proyecto como script:
+
+```html
+<script src="MultipartUploader.js"></script>
 ```
 
-## Uso
+O si usas módulos:
 
-Primero, importa el módulo en tu proyecto:
-
-```javascript
-const MultipartUploader = require('innoboxrr-multipart-uploader');
+```js
+const MultipartUploader = require('./MultipartUploader');
 ```
 
-Para utilizar el cargador, crea una nueva instancia del `MultipartUploader` y comienza la carga del archivo:
+---
 
-```javascript
-const uploader = new MultipartUploader('video-identifier');
+## 🧱 Parámetros requeridos
 
-// Asegúrate de tener un archivo tipo File (como de un input de tipo file en el navegador)
-const file = /* tu archivo aquí */;
+Al instanciar `MultipartUploader`, debes pasar un `fileIdentifier` único y un objeto de configuración con los siguientes parámetros:
 
-uploader.startUpload(file)
-  .then(() => {
-    console.log('¡La carga se ha completado con éxito!');
-  })
-  .catch(error => {
-    console.error('Hubo un error durante la carga:', error);
-  });
+### Props
+
+| Parámetro             | Tipo       | Requerido | Descripción                                                                |
+| --------------------- | ---------- | --------- | -------------------------------------------------------------------------- |
+| `fileIdentifier`      | `string`   | ✅         | Identificador único del archivo a subir.                                   |
+| `token`               | `string`   | ✅         | CSRF token para proteger las peticiones POST.                              |
+| `initiateUploadRoute` | `string`   | ✅         | URL para iniciar la carga y obtener el `upload_id`.                        |
+| `signPartUploadRoute` | `string`   | ✅         | URL para obtener las URLs firmadas de cada parte.                          |
+| `completeUploadRoute` | `string`   | ✅         | URL para completar la carga y notificar al backend.                        |
+| `filename`            | `string`   | ❌         | Nombre original del archivo.                                               |
+| `allowedFileTypes`    | `string[]` | ❌         | Lista de MIME types permitidos. Usa `['*']` para permitir todos (default). |
+| `chunkSize`           | `number`   | ❌         | Tamaño de cada chunk en MB (default: 5 MB).                                |
+| `maxRetries`          | `number`   | ❌         | Máximo número de reintentos por parte (default: 3).                        |
+
+---
+
+## 📦 Ejemplo de uso
+
+```js
+const uploader = new MultipartUploader('archivo-123', {
+    token: document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+    initiateUploadRoute: '/api/upload/initiate',
+    signPartUploadRoute: '/api/upload/sign-part',
+    completeUploadRoute: '/api/upload/complete',
+    allowedFileTypes: ['image/png', 'application/pdf'],
+    chunkSize: 10, // en MB
+    maxRetries: 5,
+    filename: 'ejemplo.pdf'
+});
+
+// Registrar eventos
+uploader
+    .on('progress', (progress) => {
+        console.log(`Progreso: ${progress.toFixed(2)}%`);
+    })
+    .on('complete', (res) => {
+        console.log('Carga completa:', res);
+    })
+    .on('error', (err) => {
+        console.error('Error durante la carga:', err);
+    });
+
+// Iniciar carga
+document.getElementById('inputArchivo').addEventListener('change', function () {
+    const file = this.files[0];
+    uploader.startUpload(file);
+});
 ```
 
-### Métodos
+---
 
-- `startUpload(file)`: Inicia la carga del archivo.
-- `pauseUpload()`: Pausa la carga actual.
-- `resumeUpload()`: Reanuda una carga pausada.
-- `completeUpload()`: Finaliza la carga una vez que todas las partes han sido subidas.
+## ⏸️ Pausar y Reanudar
 
-## Ejemplos
+Puedes pausar y reanudar la carga en cualquier momento:
 
-En construcción...
+```js
+uploader.pauseUpload();   // Pausa la carga
+uploader.resumeUpload();  // Reanuda desde la última parte
+```
 
-## Contribuciones
+---
 
-Las contribuciones son bienvenidas. Por favor, envía un pull request o crea un issue si tienes ideas sobre cómo mejorar este paquete.
+## 📡 Eventos disponibles
 
-## Licencia
+| Evento     | Descripción                                   | Argumento                        |
+| ---------- | --------------------------------------------- | -------------------------------- |
+| `progress` | Se dispara con cada parte cargada             | Porcentaje de progreso (number)  |
+| `complete` | Se dispara al completar toda la carga         | Objeto con `status` y `response` |
+| `error`    | Se dispara cuando falla la carga de una parte | Mensaje de error (string)        |
 
-Este proyecto está bajo la licencia ISC. Consulta el archivo `LICENSE` en este repositorio para obtener más detalles.
+---
+
+## 🛡️ Consideraciones de seguridad
+
+* Asegúrate de validar el `file_identifier` y `filename` en el backend.
+* Las rutas deben estar protegidas y validar el token CSRF.
+* El sistema debe manejar la recolección de partes (ETags) para completar el multipart upload correctamente.
+
+---
+
+## 📁 Backend esperado
+
+Tu backend debe exponer 3 rutas:
+
+1. `initiateUploadRoute`: Retorna `{ upload_id: '...' }`
+2. `signPartUploadRoute`: Retorna `{ url: 'https://...' }` para cada parte.
+3. `completeUploadRoute`: Recibe `{ parts: [{ PartNumber, ETag }...] }` y cierra la carga.
+
+---
+
+¿Quieres que también te genere la estructura de los endpoints en Laravel o Node.js?
