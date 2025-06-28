@@ -24,6 +24,9 @@
             this.currentPartNumber = 1;
             this.isPaused = false;
             this.parts = [];
+            this.initiateUploadExtraParams = params.initiateUploadExtraParams || {};
+            this.signPartUploadExtraParams = params.signPartUploadExtraParams || {};
+            this.completeUploadExtraParams = params.completeUploadExtraParams || {};
             this.eventHandlers = {
                 'progress': [],
                 'complete': [],
@@ -73,6 +76,7 @@
                 _token: this.token,
                 file_identifier: this.fileIdentifier,
                 filename: this.filename,
+                ...this.initiateUploadExtraParams,
             });
 
             this.uploadId = initiateResponse.data.upload_id;
@@ -122,6 +126,7 @@
                 filename: this.filename,
                 upload_id: this.uploadId,
                 part_number: partNumber,
+                ...this.signPartUploadExtraParams,
             });
 
             const url = signedResponse.data.url;
@@ -160,6 +165,7 @@
                 filename: this.filename,
                 upload_id: this.uploadId,
                 parts: this.parts,
+                ...this.completeUploadExtraParams,
             });
 
             this.emit('complete', {
