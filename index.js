@@ -1,179 +1,249 @@
-(function (root, factory) {
-    if (typeof define === 'function' && define.amd) {
-        define([], factory); // AMD
-    } else if (typeof module === 'object' && module.exports) {
-        module.exports = factory(); // CommonJS
-    } else {
-        root.MultipartUploader = factory(); // Browser globals
+import axios from 'axios'
+
+/**
+ * Sube un archivo en partes contra un backend que firma cada una.
+ *
+ * El flujo son tres rutas del servidor: una que inicia la subida y devuelve el
+ * `upload_id`, otra que firma cada parte, y otra que la cierra.
+ *
+ *     const uploader = new MultipartUploader('video-42', {
+ *         initiateUploadRoute: route('api.upload.initiate'),
+ *         signPartUploadRoute: route('api.upload.sign'),
+ *         completeUploadRoute: route('api.upload.complete'),
+ *     })
+ *
+ *     uploader.on('progress', (percent) => ...)
+ *     uploader.on('complete', ({ response }) => ...)
+ *     uploader.on('error', (error) => ...)
+ *
+ *     await uploader.startUpload(file)
+ */
+export default class MultipartUploader {
+    /**
+     * @param {string} fileIdentifier
+     * @param {object} [params]
+     */
+    constructor(fileIdentifier, params = {}) {
+        this.token = params.token
+        this.initiateUploadRoute = params.initiateUploadRoute
+        this.signPartUploadRoute = params.signPartUploadRoute
+        this.completeUploadRoute = params.completeUploadRoute
+
+        this.allowedFileTypes = params.allowedFileTypes ?? ['*']
+        this.chunkSize = (params.chunkSize ?? 5) * 1024 * 1024
+        this.maxRetries = params.maxRetries ?? 3
+        this.retryInterval = params.retryInterval ?? 1000
+
+        this.file = null
+        this.uploadId = null
+        this.fileIdentifier = fileIdentifier
+        this.filename = params.filename ?? null
+        this.currentPartNumber = 1
+        this.isPaused = false
+        this.parts = []
+
+        this.initiateUploadExtraParams = params.initiateUploadExtraParams ?? {}
+        this.signPartUploadExtraParams = params.signPartUploadExtraParams ?? {}
+        this.completeUploadExtraParams = params.completeUploadExtraParams ?? {}
+
+        this.eventHandlers = { progress: [], complete: [], error: [], paused: [] }
     }
-}(typeof self !== 'undefined' ? self : this, function () {
 
-    class MultipartUploader {
-        constructor(fileIdentifier, params = {}) {
-            this.token = params.token; // CSRF Token
-            this.initiateUploadRoute = params.initiateUploadRoute;
-            this.signPartUploadRoute = params.signPartUploadRoute;
-            this.completeUploadRoute = params.completeUploadRoute;
-            this.allowedFileTypes = params.allowedFileTypes || ['*']; // Tipos de archivo permitidos ('*' para cualquiera)
-            this.chunkSize = (params.chunkSize ?? 5) * 1024 * 1024; // Tamaño de chunk en MB (5 MB por defecto)
-            this.maxRetries = params.maxRetries ?? 3; // Reintentos por defecto
-            this.file = null;
-            this.uploadId = null;
-            this.fileIdentifier = fileIdentifier; // Identificador único para el archivo
-            this.filename = params.filename || null;
-            this.currentPartNumber = 1;
-            this.isPaused = false;
-            this.parts = [];
-            this.initiateUploadExtraParams = params.initiateUploadExtraParams || {};
-            this.signPartUploadExtraParams = params.signPartUploadExtraParams || {};
-            this.completeUploadExtraParams = params.completeUploadExtraParams || {};
-            this.eventHandlers = {
-                'progress': [],
-                'complete': [],
-                'error': [],
-            };
+    /**
+     * @param {File} file
+     */
+    validateFileType(file) {
+        if (! file || ! file.type) {
+            throw new Error('El archivo no tiene un tipo válido.')
         }
 
-        // Validar el tipo de archivo
-        validateFileType(file) {
-            if (!file || !file.type) {
-                throw new Error('El archivo no tiene un tipo válido.');
-            }
-
-            if (this.allowedFileTypes.includes('*')) {
-                return true; // Aceptar cualquier archivo
-            }
-
-            if (!this.allowedFileTypes.includes(file.type)) {
-                throw new Error(`El tipo de archivo "${file.type}" no está permitido. Tipos permitidos: ${this.allowedFileTypes.join(', ')}`);
-            }
+        if (this.allowedFileTypes.includes('*')) {
+            return true
         }
 
-        // Método para registrar manejadores de eventos
-        on(event, handler) {
-            if (this.eventHandlers[event]) {
-                this.eventHandlers[event].push(handler);
-            }
-            return this; // Permitir encadenamiento
+        if (! this.allowedFileTypes.includes(file.type)) {
+            throw new Error(
+                `El tipo de archivo "${file.type}" no está permitido. `
+                + `Tipos permitidos: ${this.allowedFileTypes.join(', ')}`
+            )
         }
 
-        // Método para emitir eventos
-        emit(event, data) {
-            if (this.eventHandlers[event]) {
-                this.eventHandlers[event].forEach(handler => handler(data));
-            }
+        return true
+    }
+
+    /**
+     * @param {string} event
+     * @param {Function} handler
+     */
+    on(event, handler) {
+        if (this.eventHandlers[event]) {
+            this.eventHandlers[event].push(handler)
         }
 
-        // Inicia la carga del archivo
-        async startUpload(file) {
-            this.validateFileType(file);
-            this.file = file;
+        return this
+    }
 
-            const totalParts = Math.ceil(this.file.size / this.chunkSize);
-
-            // Iniciar la carga con una petición al servidor
-            const initiateResponse = await axios.post(this.initiateUploadRoute, {
-                _token: this.token,
-                file_identifier: this.fileIdentifier,
-                filename: this.filename,
-                ...this.initiateUploadExtraParams,
-            });
-
-            this.uploadId = initiateResponse.data.upload_id;
-            await this.uploadParts(totalParts);
+    /**
+     * @param {string} event
+     * @param {Function} handler
+     */
+    off(event, handler) {
+        if (this.eventHandlers[event]) {
+            this.eventHandlers[event] = this.eventHandlers[event].filter((h) => h !== handler)
         }
 
-        // Carga las partes del archivo
-        async uploadParts(totalParts) {
-            let uploadedSize = 0;
+        return this
+    }
 
-            for (this.currentPartNumber; this.currentPartNumber <= totalParts && !this.isPaused; this.currentPartNumber++) {
-                let retries = 0;
-                let success = false;
+    emit(event, data) {
+        (this.eventHandlers[event] ?? []).forEach((handler) => handler(data))
+    }
 
-                while (retries < this.maxRetries && !success) {
-                    try {
-                        await this.uploadPart(this.currentPartNumber);
-                        success = true;
+    /**
+     * @param {File} file
+     */
+    async startUpload(file) {
+        this.validateFileType(file)
 
-                        uploadedSize += Math.min(this.chunkSize, this.file.size - uploadedSize);
-                        const totalProgress = (uploadedSize / this.file.size) * 100;
-                        this.emit('progress', totalProgress);
-                    } catch (error) {
-                        retries++;
-                        if (retries >= this.maxRetries) {
-                            this.emit('error', `Failed uploading part ${this.currentPartNumber} after ${this.maxRetries} retries.`);
-                            throw new Error(`Failed uploading part ${this.currentPartNumber} after ${this.maxRetries} retries.`);
-                        }
-                    }
+        this.file = file
+        this.parts = []
+        this.currentPartNumber = 1
+        this.isPaused = false
+
+        const { data } = await axios.post(this.initiateUploadRoute, {
+            _token: this.token,
+            file_identifier: this.fileIdentifier,
+            filename: this.filename,
+            ...this.initiateUploadExtraParams,
+        })
+
+        this.uploadId = data.upload_id
+
+        return this.uploadParts()
+    }
+
+    get totalParts() {
+        return Math.ceil(this.file.size / this.chunkSize)
+    }
+
+    async uploadParts() {
+        const total = this.totalParts
+
+        while (this.currentPartNumber <= total && ! this.isPaused) {
+            await this.uploadPartWithRetries(this.currentPartNumber)
+
+            this.currentPartNumber++
+
+            this.emit('progress', Math.min(100, ((this.currentPartNumber - 1) / total) * 100))
+        }
+
+        if (this.isPaused) {
+            this.emit('paused', { part: this.currentPartNumber })
+
+            return null
+        }
+
+        return this.completeUpload()
+    }
+
+    /**
+     * @param {number} partNumber
+     */
+    async uploadPartWithRetries(partNumber) {
+        let attempt = 0
+
+        for (;;) {
+            try {
+                return await this.uploadPart(partNumber)
+            } catch (error) {
+                attempt++
+
+                if (attempt >= this.maxRetries) {
+                    const message = `Failed uploading part ${partNumber} after ${this.maxRetries} retries.`
+
+                    // Se avisa y se lanza: quien llame decide, y quien solo
+                    // escuche el evento se entera igual.
+                    this.emit('error', message)
+
+                    throw new Error(message, { cause: error })
                 }
+
+                // Sin espera, los tres intentos salen casi a la vez y no le dan
+                // tiempo a recuperarse a nada.
+                await new Promise((resolve) => setTimeout(resolve, this.retryInterval * attempt))
             }
-
-            if (this.currentPartNumber > totalParts) {
-                await this.completeUpload();
-            }
-        }
-
-        // Carga una parte específica del archivo
-        async uploadPart(partNumber) {
-            const start = (partNumber - 1) * this.chunkSize;
-            const end = partNumber * this.chunkSize;
-            const blob = this.file.slice(start, end);
-
-            const signedResponse = await axios.post(this.signPartUploadRoute, {
-                _token: this.token,
-                file_identifier: this.fileIdentifier,
-                filename: this.filename,
-                upload_id: this.uploadId,
-                part_number: partNumber,
-                ...this.signPartUploadExtraParams,
-            });
-
-            const url = signedResponse.data.url;
-
-            const uploadResponse = await axios.put(url, blob, {
-                headers: {
-                    'Content-Type': 'application/octet-stream',
-                },
-                withCredentials: false,
-            });
-
-            if (uploadResponse.status !== 200) {
-                throw new Error(`Failed uploading part ${partNumber}`);
-            }
-
-            this.parts.push({ ETag: uploadResponse.headers.etag, PartNumber: partNumber });
-        }
-
-        // Pausar la carga
-        pauseUpload() {
-            this.isPaused = true;
-        }
-
-        // Reanudar la carga
-        resumeUpload() {
-            this.isPaused = false;
-            const totalParts = Math.ceil(this.file.size / this.chunkSize);
-            this.uploadParts(totalParts);
-        }
-
-        // Completar la carga
-        async completeUpload() {
-            let res = await axios.post(this.completeUploadRoute, {
-                _token: this.token,
-                file_identifier: this.fileIdentifier,
-                filename: this.filename,
-                upload_id: this.uploadId,
-                parts: this.parts,
-                ...this.completeUploadExtraParams,
-            });
-
-            this.emit('complete', {
-                status: true,
-                response: res
-            });
         }
     }
 
-    return MultipartUploader;
-}));
+    /**
+     * @param {number} partNumber
+     */
+    async uploadPart(partNumber) {
+        const start = (partNumber - 1) * this.chunkSize
+        const blob = this.file.slice(start, start + this.chunkSize)
+
+        const { data } = await axios.post(this.signPartUploadRoute, {
+            _token: this.token,
+            file_identifier: this.fileIdentifier,
+            filename: this.filename,
+            upload_id: this.uploadId,
+            part_number: partNumber,
+            ...this.signPartUploadExtraParams,
+        })
+
+        const response = await axios.put(data.url, blob, {
+            headers: { 'Content-Type': 'application/octet-stream' },
+            withCredentials: false,
+        })
+
+        if (response.status !== 200) {
+            throw new Error(`Failed uploading part ${partNumber}`)
+        }
+
+        // Reintentar una parte que ya se habia subido dejaba dos entradas con
+        // el mismo PartNumber, y S3 rechaza la lista al cerrar.
+        this.parts = this.parts.filter((part) => part.PartNumber !== partNumber)
+        this.parts.push({ ETag: response.headers.etag, PartNumber: partNumber })
+
+        return response
+    }
+
+    pauseUpload() {
+        this.isPaused = true
+
+        return this
+    }
+
+    /**
+     * Devuelve la promesa, para poder esperarla o capturar su error. Antes se
+     * lanzaba sin devolverla, así que un fallo al reanudar acababa en un
+     * rechazo no capturado.
+     */
+    resumeUpload() {
+        if (! this.file) {
+            throw new Error('No hay ninguna subida que reanudar.')
+        }
+
+        this.isPaused = false
+
+        return this.uploadParts()
+    }
+
+    async completeUpload() {
+        const response = await axios.post(this.completeUploadRoute, {
+            _token: this.token,
+            file_identifier: this.fileIdentifier,
+            filename: this.filename,
+            upload_id: this.uploadId,
+            // S3 exige las partes ordenadas por número.
+            parts: [...this.parts].sort((a, b) => a.PartNumber - b.PartNumber),
+            ...this.completeUploadExtraParams,
+        })
+
+        this.emit('complete', { status: true, response })
+
+        return response
+    }
+}
+
+export { MultipartUploader }
