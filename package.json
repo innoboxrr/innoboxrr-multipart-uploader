@@ -36,10 +36,13 @@
     "node": ">=12.x"
   },
   "files": [
-    "dist",
-    "src"
+    "index.js"
   ],
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "sideEffects": false
 }
